@@ -191,6 +191,13 @@ class EfficientFormerImageProcessor(metaclass=DummyObject):
         requires_backends(self, ["vision"])
 
 
+class EfficientNetImageProcessor(metaclass=DummyObject):
+    _backends = ["vision"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["vision"])
+
+
 class FlavaFeatureExtractor(metaclass=DummyObject):
     _backends = ["vision"]
 
@@ -380,6 +387,13 @@ class PerceiverImageProcessor(metaclass=DummyObject):
         requires_backends(self, ["vision"])
 
 
+class Pix2StructImageProcessor(metaclass=DummyObject):
+    _backends = ["vision"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["vision"])
+
+
 class PoolFormerFeatureExtractor(metaclass=DummyObject):
     _backends = ["vision"]
 
@@ -388,6 +402,13 @@ class PoolFormerFeatureExtractor(metaclass=DummyObject):
 
 
 class PoolFormerImageProcessor(metaclass=DummyObject):
+    _backends = ["vision"]
+
+    def __init__(self, *args, **kwargs):
+        requires_backends(self, ["vision"])
+
+
+class SamImageProcessor(metaclass=DummyObject):
     _backends = ["vision"]
 
     def __init__(self, *args, **kwargs):

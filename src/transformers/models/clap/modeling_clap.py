@@ -825,16 +825,15 @@ class ClapAudioEncoder(nn.Module):
         self.config = config
         self.patch_embed = ClapAudioPatchEmbed(config)
         self.enable_fusion = config.enable_fusion
-        grid_size = self.patch_embed.grid_size
         self.patch_stride = self.patch_embed.patch_stride
         self.spec_size = config.spec_size
-        self.freq_ratio = self.spec_size // config.num_mel_bins
+        self.freq_ratio = config.spec_size // config.num_mel_bins
 
         self.num_features = int(config.patch_embeds_hidden_size * 2 ** (self.num_layers - 1))
-        self.freq_ratio = config.spec_size // config.num_mel_bins
 
         drop_path_rate = [x.item() for x in torch.linspace(0, config.drop_path_rate, sum(config.depths))]
 
+        grid_size = self.patch_embed.grid_size
         self.input_resolutions = [(grid_size[0] // (2**i), grid_size[1] // (2**i)) for i in range(self.num_layers)]
 
         self.layers = nn.ModuleList(
@@ -898,8 +897,8 @@ class ClapAudioEncoder(nn.Module):
     def forward(
         self,
         input_features,
-        head_mask: Optional[torch.FloatTensor] = None,
         is_longer: Optional[torch.FloatTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
         output_attentions: Optional[bool] = False,
         output_hidden_states: Optional[bool] = False,
         output_hidden_states_before_downsampling: Optional[bool] = False,
@@ -1579,6 +1578,13 @@ class ClapTextEncoder(nn.Module):
         all_self_attentions = () if output_attentions else None
         all_cross_attentions = () if output_attentions and self.config.add_cross_attention else None
 
+        if self.gradient_checkpointing and self.training:
+            if use_cache:
+                logger.warning_once(
+                    "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
+                )
+                use_cache = False
+
         next_decoder_cache = () if use_cache else None
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
@@ -1588,11 +1594,6 @@ class ClapTextEncoder(nn.Module):
             past_key_value = past_key_values[i] if past_key_values is not None else None
 
             if self.gradient_checkpointing and self.training:
-                if use_cache:
-                    logger.warning(
-                        "`use_cache=True` is incompatible with gradient checkpointing. Setting `use_cache=False`..."
-                    )
-                    use_cache = False
 
                 def create_custom_forward(module):
                     def custom_forward(*inputs):
@@ -1673,7 +1674,7 @@ class ClapPreTrainedModel(PreTrainedModel):
     models.
     """
 
-    config_class = ClapTextConfig
+    config_class = ClapConfig
     base_model_prefix = "clap"
     supports_gradient_checkpointing = False
     _keys_to_ignore_on_load_missing = [r"position_ids", r"logit_scale_a", r"logit_scale_t"]
@@ -1746,7 +1747,7 @@ class ClapAudioModel(ClapPreTrainedModel):
         >>> inputs = processor(audios=audio_sample, return_tensors="pt")
 
         >>> outputs = model(**inputs)
-        >>> last_hidden_state = outputs.audio_emmbeds
+        >>> last_hidden_state = outputs.last_hidden_state
         ```"""
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
@@ -2069,6 +2070,7 @@ class ClapModel(ClapPreTrainedModel):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         input_features: Optional[torch.FloatTensor] = None,
+        is_longer: Optional[torch.BoolTensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         return_loss: Optional[bool] = None,
@@ -2108,6 +2110,7 @@ class ClapModel(ClapPreTrainedModel):
 
         audio_outputs = self.audio_model(
             input_features=input_features,
+            is_longer=is_longer,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
@@ -2141,7 +2144,7 @@ class ClapModel(ClapPreTrainedModel):
         loss = None
         if return_loss:
             caption_loss = contrastive_loss(logits_per_text)
-            audio_loss = contrastive_loss(logits_per_text.t())
+            audio_loss = contrastive_loss(logits_per_audio.t())
             loss = (caption_loss + audio_loss) / 2.0
 
         if not return_dict:
@@ -2203,7 +2206,7 @@ class ClapTextModelWithProjection(ClapPreTrainedModel):
         >>> model = ClapTextModelWithProjection.from_pretrained("laion/clap-htsat-unfused")
         >>> tokenizer = AutoTokenizer.from_pretrained("laion/clap-htsat-unfused")
 
-        >>> inputs = tokenizer(["a photo of a cat", "a photo of a dog"], padding=True, return_tensors="pt")
+        >>> inputs = tokenizer(["a sound of a cat", "a sound of a dog"], padding=True, return_tensors="pt")
 
         >>> outputs = model(**inputs)
         >>> text_embeds = outputs.text_embeds
